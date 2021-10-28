@@ -1,0 +1,52 @@
+{
+  "pipelineSpec": {
+    "components": {
+      "comp-train-model": {
+        "executorLabel": "exec-train-model"
+      }
+    },
+    "deploymentSpec": {
+      "executors": {
+        "exec-train-model": {
+          "container": {
+            "command": [
+              "sh",
+              "-c",
+              "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location 'scikit-learn' 'google-cloud-bigquery' 'google-cloud-storage' 'pandas' 'pyarrow' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location 'scikit-learn' 'google-cloud-bigquery' 'google-cloud-storage' 'pandas' 'pyarrow' --user) && \"$0\" \"$@\"",
+              "sh",
+              "-ec",
+              "program_path=$(mktemp)\nprintf \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
+              "def _train_model():\n    \"\"\"Trains our penguin model.\"\"\"\n\n    import os\n    from pathlib import Path\n\n    # from google.cloud import storage\n    from google.cloud import bigquery\n\n    import joblib\n    from sklearn.compose import ColumnTransformer\n    from sklearn.ensemble import RandomForestClassifier\n    from sklearn.preprocessing import OneHotEncoder\n    from sklearn.pipeline import Pipeline\n\n    client = bigquery.Client(project=os.environ[\"CLOUD_ML_PROJECT_ID\"])    \n    data = client.query(\"SELECT * FROM `bigquery-public-data`.ml_datasets.penguins\").to_dataframe()\n\n    train = data[[\"species\", \"island\", \"sex\"]].dropna().loc[lambda row: row.sex != \".\"]\n\n    x = train.drop(\"sex\", axis=1)\n    y = train[\"sex\"].map({'MALE':0, 'FEMALE':1}).astype(int)\n\n    model = Pipeline(\n        steps=[\n            (\n                \"feature_engineering\", \n                ColumnTransformer(\n                  transformers=[(\"one_hot\", OneHotEncoder(), [\"species\", \"island\"])],\n                  remainder=\"drop\"\n                )\n            ),\n            (\n                \"model\",\n                RandomForestClassifier()\n            )       \n        ]\n    )\n\n    model.fit(x, y)\n\n    # Save model artifact to local filesystem (doesn't persist)\n    with Path(\"/gcs/cde-dse-test-outputs/model.pkl\").open(\"wb\") as file_:\n        joblib.dump(model, file_)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Train model', description='Trains our penguin model.')\n_parsed_args = vars(_parser.parse_args())\n\n_outputs = _train_model(**_parsed_args)\n"
+            ],
+            "image": "python:3.7"
+          }
+        }
+      }
+    },
+    "pipelineInfo": {
+      "name": "penguins"
+    },
+    "root": {
+      "dag": {
+        "tasks": {
+          "train-model": {
+            "cachingOptions": {
+              "enableCache": true
+            },
+            "componentRef": {
+              "name": "comp-train-model"
+            },
+            "taskInfo": {
+              "name": "train-model"
+            }
+          }
+        }
+      }
+    },
+    "schemaVersion": "2.0.0",
+    "sdkVersion": "kfp-1.8.6"
+  },
+  "runtimeConfig": {
+    "gcsOutputDirectory": "gs://cde-dse-test-artifacts/penguin-model"
+  }
+}
