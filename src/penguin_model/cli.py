@@ -12,13 +12,14 @@ app = typer.Typer()
 
 
 @app.command()
-def train(train_dataset: str, output_path: str):
+def train(train_dataset: str):
     client = bigquery.Client(project=os.environ["CLOUD_ML_PROJECT_ID"])    
-    data = client.query(train_dataset).to_dataframe()
+    data = client.query(f"SELECT * FROM {train_dataset}").to_dataframe()
 
     model = train_model(data)
 
-    with Path(output_path).open("wb") as file_:
+    output_dir = os.environ["AIP_MODEL_DIR"]
+    with (Path(output_path) / "model.pkl").open("wb") as file_:
         joblib.dump(model, file_)
 
 
