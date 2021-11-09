@@ -1,10 +1,10 @@
 import os 
 from pathlib import Path
 
-from google.cloud import bigquery
+import pandas as pd
+
 import joblib
 import typer
-
 
 from .model import train_model
 
@@ -12,15 +12,14 @@ app = typer.Typer()
 
 
 @app.command()
-def train(train_dataset: str):
-    client = bigquery.Client(project=os.environ["CLOUD_ML_PROJECT_ID"])    
-    data = client.query(f"SELECT * FROM {train_dataset}").to_dataframe()
+def train(dataset_path: Path, model_path: Path):
+    # Read data and train model.
+    train_df = pd.read_parquet(dataset_path)
+    model = train_model(train_df)
 
-    model = train_model(data)
-
-    output_dir = os.environ["AIP_MODEL_DIR"]
-    with (Path(output_path) / "model.pkl").open("wb") as file_:
-        joblib.dump(model, file_)
+    # Save model.
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(model, model_path)
 
 
 if __name__ == "__main__":

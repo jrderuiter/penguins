@@ -1,12 +1,8 @@
-FROM python:3.9-slim AS base
+FROM python:3.9-slim
 
 ENV PYTHONFAULTHANDLER=1 \
     PYTHONHASHSEED=random \
     PYTHONUNBUFFERED=1
-
-WORKDIR /app
-
-FROM base as builder
 
 ENV PIP_DEFAULT_TIMEOUT=100 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
@@ -14,14 +10,14 @@ ENV PIP_DEFAULT_TIMEOUT=100 \
     POETRY_VERSION=1.1.11
 
 RUN python -m pip install "poetry==$POETRY_VERSION"
-RUN python -m venv /venv
+
+WORKDIR /app
 
 COPY pyproject.toml poetry.lock ./
-RUN poetry export --without-hashes -f requirements.txt | /venv/bin/python -m pip install -r /dev/stdin
+RUN poetry config virtualenvs.in-project true \
+    && poetry install --no-interaction --no-dev --no-root
 
-COPY . .
-RUN poetry build && /venv/bin/python -m pip install dist/*.whl
+ADD src /app/src
+RUN  poetry install --no-interaction --no-dev
 
-FROM base as final
-ENV PATH=/venv/bin:$PATH
-COPY --from=builder /venv /venv
+ENV PATH=/app/.venv/bin:$PATH

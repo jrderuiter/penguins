@@ -1,34 +1,206 @@
 {
   "pipelineSpec": {
     "components": {
+      "comp-eval-model": {
+        "executorLabel": "exec-eval-model",
+        "inputDefinitions": {
+          "artifacts": {
+            "model_path": {
+              "artifactType": {
+                "schemaTitle": "system.Model",
+                "schemaVersion": "0.0.1"
+              }
+            }
+          }
+        },
+        "outputDefinitions": {
+          "artifacts": {
+            "metrics": {
+              "artifactType": {
+                "schemaTitle": "system.Metrics",
+                "schemaVersion": "0.0.1"
+              }
+            }
+          },
+          "parameters": {
+            "roc": {
+              "type": "DOUBLE"
+            }
+          }
+        }
+      },
+      "comp-fetch-bigquery": {
+        "executorLabel": "exec-fetch-bigquery",
+        "inputDefinitions": {
+          "parameters": {
+            "project_id": {
+              "type": "STRING"
+            },
+            "query": {
+              "type": "STRING"
+            }
+          }
+        },
+        "outputDefinitions": {
+          "artifacts": {
+            "output_path": {
+              "artifactType": {
+                "schemaTitle": "system.Dataset",
+                "schemaVersion": "0.0.1"
+              }
+            }
+          }
+        }
+      },
       "comp-train-model": {
-        "executorLabel": "exec-train-model"
+        "executorLabel": "exec-train-model",
+        "inputDefinitions": {
+          "artifacts": {
+            "train_dataset": {
+              "artifactType": {
+                "schemaTitle": "system.Dataset",
+                "schemaVersion": "0.0.1"
+              }
+            }
+          }
+        },
+        "outputDefinitions": {
+          "artifacts": {
+            "model": {
+              "artifactType": {
+                "schemaTitle": "system.Model",
+                "schemaVersion": "0.0.1"
+              }
+            }
+          }
+        }
       }
     },
     "deploymentSpec": {
       "executors": {
-        "exec-train-model": {
+        "exec-eval-model": {
           "container": {
+            "args": [
+              "--executor_input",
+              "{{$}}",
+              "--function_to_execute",
+              "eval_model"
+            ],
             "command": [
               "sh",
               "-c",
-              "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location 'scikit-learn' 'google-cloud-bigquery' 'google-cloud-storage' 'pandas' 'pyarrow' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location 'scikit-learn' 'google-cloud-bigquery' 'google-cloud-storage' 'pandas' 'pyarrow' --user) && \"$0\" \"$@\"",
+              "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet     --no-warn-script-location 'kfp==1.8.9' && \"$0\" \"$@\"\n",
               "sh",
               "-ec",
-              "program_path=$(mktemp)\nprintf \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
-              "def _train_model():\n    \"\"\"Trains our penguin model.\"\"\"\n\n    import os\n    from pathlib import Path\n\n    # from google.cloud import storage\n    from google.cloud import bigquery\n\n    import joblib\n    from sklearn.compose import ColumnTransformer\n    from sklearn.ensemble import RandomForestClassifier\n    from sklearn.preprocessing import OneHotEncoder\n    from sklearn.pipeline import Pipeline\n\n    client = bigquery.Client(project=os.environ[\"CLOUD_ML_PROJECT_ID\"])    \n    data = client.query(\"SELECT * FROM `bigquery-public-data`.ml_datasets.penguins\").to_dataframe()\n\n    train = data[[\"species\", \"island\", \"sex\"]].dropna().loc[lambda row: row.sex != \".\"]\n\n    x = train.drop(\"sex\", axis=1)\n    y = train[\"sex\"].map({'MALE':0, 'FEMALE':1}).astype(int)\n\n    model = Pipeline(\n        steps=[\n            (\n                \"feature_engineering\", \n                ColumnTransformer(\n                  transformers=[(\"one_hot\", OneHotEncoder(), [\"species\", \"island\"])],\n                  remainder=\"drop\"\n                )\n            ),\n            (\n                \"model\",\n                RandomForestClassifier()\n            )       \n        ]\n    )\n\n    model.fit(x, y)\n\n    # Save model artifact to local filesystem (doesn't persist)\n    with Path(\"/gcs/cde-dse-test-outputs/model.pkl\").open(\"wb\") as file_:\n        joblib.dump(model, file_)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Train model', description='Trains our penguin model.')\n_parsed_args = vars(_parser.parse_args())\n\n_outputs = _train_model(**_parsed_args)\n"
+              "program_path=$(mktemp -d)\nprintf \"%s\" \"$0\" > \"$program_path/ephemeral_component.py\"\npython3 -m kfp.v2.components.executor_main                         --component_module_path                         \"$program_path/ephemeral_component.py\"                         \"$@\"\n",
+              "\nimport kfp\nfrom kfp.v2 import dsl\nfrom kfp.v2.dsl import *\nfrom typing import *\n\ndef eval_model(model_path: InputPath(Model), metrics: Output[Metrics]) -> NamedTuple(\n    'EvalModelOutput',\n    [\n      ('roc', float)\n    ]):\n  print(model_path)\n\n  metrics.log_metric(\"roc\", 0.9)\n\n"
             ],
-            "image": "python:3.7"
+            "image": "python:3.9-slim"
+          }
+        },
+        "exec-fetch-bigquery": {
+          "container": {
+            "args": [
+              "--executor_input",
+              "{{$}}",
+              "--function_to_execute",
+              "fetch_bigquery"
+            ],
+            "command": [
+              "sh",
+              "-c",
+              "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet     --no-warn-script-location 'google-cloud-bigquery' 'pandas' 'pyarrow' 'kfp==1.8.9' && \"$0\" \"$@\"\n",
+              "sh",
+              "-ec",
+              "program_path=$(mktemp -d)\nprintf \"%s\" \"$0\" > \"$program_path/ephemeral_component.py\"\npython3 -m kfp.v2.components.executor_main                         --component_module_path                         \"$program_path/ephemeral_component.py\"                         \"$@\"\n",
+              "\nimport kfp\nfrom kfp.v2 import dsl\nfrom kfp.v2.dsl import *\nfrom typing import *\n\ndef fetch_bigquery(\n    query: str, output_path: OutputPath(Dataset), project_id: Optional[str] = None\n) -> None:\n    \"\"\"Calculates sum of two arguments\"\"\"\n\n    from google.cloud import bigquery\n\n    client = bigquery.Client(project=project_id)\n    job = client.query(query)\n\n    df = job.to_dataframe()\n    df.to_parquet(output_path)\n\n"
+            ],
+            "image": "python:3.9-slim"
+          }
+        },
+        "exec-train-model": {
+          "container": {
+            "command": [
+              "penguin-model",
+              "{{$.inputs.artifacts['train_dataset'].path}}",
+              "{{$.outputs.artifacts['model'].path}}"
+            ],
+            "image": "europe-west1-docker.pkg.dev/cde-ds-enablement-8k1r/vertex/penguin_model"
           }
         }
       }
     },
     "pipelineInfo": {
-      "name": "penguins"
+      "name": "penguin"
     },
     "root": {
       "dag": {
+        "outputs": {
+          "artifacts": {
+            "eval-model-metrics": {
+              "artifactSelectors": [
+                {
+                  "outputArtifactKey": "metrics",
+                  "producerSubtask": "eval-model"
+                }
+              ]
+            }
+          }
+        },
         "tasks": {
+          "eval-model": {
+            "cachingOptions": {
+              "enableCache": true
+            },
+            "componentRef": {
+              "name": "comp-eval-model"
+            },
+            "dependentTasks": [
+              "train-model"
+            ],
+            "inputs": {
+              "artifacts": {
+                "model_path": {
+                  "taskOutputArtifact": {
+                    "outputArtifactKey": "model",
+                    "producerTask": "train-model"
+                  }
+                }
+              }
+            },
+            "taskInfo": {
+              "name": "eval-model"
+            }
+          },
+          "fetch-bigquery": {
+            "cachingOptions": {
+              "enableCache": true
+            },
+            "componentRef": {
+              "name": "comp-fetch-bigquery"
+            },
+            "inputs": {
+              "parameters": {
+                "project_id": {
+                  "runtimeValue": {
+                    "constantValue": {
+                      "stringValue": "cde-ds-enablement-8k1r"
+                    }
+                  }
+                },
+                "query": {
+                  "runtimeValue": {
+                    "constantValue": {
+                      "stringValue": "SELECT * FROM bigquery-public-data.ml_datasets.penguins"
+                    }
+                  }
+                }
+              }
+            },
+            "taskInfo": {
+              "name": "fetch-bigquery"
+            }
+          },
           "train-model": {
             "cachingOptions": {
               "enableCache": true
@@ -36,17 +208,38 @@
             "componentRef": {
               "name": "comp-train-model"
             },
+            "dependentTasks": [
+              "fetch-bigquery"
+            ],
+            "inputs": {
+              "artifacts": {
+                "train_dataset": {
+                  "taskOutputArtifact": {
+                    "outputArtifactKey": "output_path",
+                    "producerTask": "fetch-bigquery"
+                  }
+                }
+              }
+            },
             "taskInfo": {
               "name": "train-model"
+            }
+          }
+        }
+      },
+      "outputDefinitions": {
+        "artifacts": {
+          "eval-model-metrics": {
+            "artifactType": {
+              "schemaTitle": "system.Metrics",
+              "schemaVersion": "0.0.1"
             }
           }
         }
       }
     },
     "schemaVersion": "2.0.0",
-    "sdkVersion": "kfp-1.8.6"
+    "sdkVersion": "kfp-1.8.9"
   },
-  "runtimeConfig": {
-    "gcsOutputDirectory": "gs://cde-dse-test-artifacts/penguin-model"
-  }
+  "runtimeConfig": {}
 }
