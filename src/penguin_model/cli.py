@@ -6,6 +6,7 @@ import pandas as pd
 import typer
 
 from .model import train_model
+from .preprocessing import preprocess
 
 app = typer.Typer()
 
@@ -13,8 +14,9 @@ app = typer.Typer()
 @app.command()
 def train(dataset_path: Path, model_path: Path):
     # Read data and train model.
-    train_df = pd.read_parquet(dataset_path)
-    model = train_model(train_df)
+    train = pd.read_parquet(dataset_path)
+    preprocessed = preprocess(train)
+    model = train_model(preprocessed)
 
     # Save model.
     model_path.parent.mkdir(parents=True, exist_ok=True)

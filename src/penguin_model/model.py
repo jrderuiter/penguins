@@ -9,12 +9,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
 
-def train_model(df):
-    train = df[["species", "island", "sex"]].dropna().loc[lambda row: row.sex != "."]
-
-    x = train.drop("sex", axis=1)
-    y = train["sex"].map({"MALE": 0, "FEMALE": 1}).astype(int)
-
+def train_model(features, labels):
     model = Pipeline(
         steps=[
             (
@@ -28,6 +23,6 @@ def train_model(df):
         ]
     )
 
-    model.fit(x, y)
+    model.fit(features, labels)
 
     return model
