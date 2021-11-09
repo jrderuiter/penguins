@@ -1,9 +1,8 @@
-import os 
+import os
 from pathlib import Path
 
-import pandas as pd
-
 import joblib
+import pandas as pd
 import typer
 
 from .model import train_model
