@@ -4,6 +4,8 @@ import pandas as pd
 
 
 def preprocess(df: pd.DataFrame) -> Tuple[pd.DataFrame, Optional[pd.Series]]:
+    """Pre-processes the given dataset in to features + labels."""
+
     if "sex" in df.columns:
         filtered = (
             df[["species", "island", "sex"]].dropna().loc[lambda row: row.sex != "."]

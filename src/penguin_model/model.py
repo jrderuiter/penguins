@@ -1,8 +1,3 @@
-import os
-from pathlib import Path
-
-import joblib
-from google.cloud import bigquery
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.pipeline import Pipeline
@@ -10,6 +5,8 @@ from sklearn.preprocessing import OneHotEncoder
 
 
 def train_model(features, labels):
+    """Trains the model on the given features/labels."""
+
     model = Pipeline(
         steps=[
             (
