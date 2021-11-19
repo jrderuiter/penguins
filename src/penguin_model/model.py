@@ -12,7 +12,9 @@ def train_model(features, labels):
             (
                 "feature_engineering",
                 ColumnTransformer(
-                    transformers=[("one_hot", OneHotEncoder(), ["species", "island"])],
+                    transformers=[
+                        ("categorical", OneHotEncoder(), ["species", "island"]),
+                        ("numeric", "passthrough", ["culmen_length_mm",	"culmen_depth_mm",	"flipper_length_mm",	"body_mass_g"])],
                     remainder="drop",
                 ),
             ),
